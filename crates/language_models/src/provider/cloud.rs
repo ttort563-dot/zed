@@ -1124,8 +1124,8 @@ impl Render for ConfigurationView {
             is_connected: !state.is_signed_out(cx),
             plan: user_store.plan(),
             subscription_period: user_store.subscription_period(),
-            eligible_for_trial: user_store.trial_started_at().is_none(),
-            account_too_young: user_store.account_too_young(),
+            eligible_for_trial: true,
+            account_too_young: false,
             sign_in_callback: self.sign_in_callback.clone(),
         }
     }
