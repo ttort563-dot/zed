@@ -1,14 +1,16 @@
 name: run_bundling
 on:
-  workflow_dispatch: # Позволяет запустить вручную кнопкой
+  workflow_dispatch: 
 
 jobs:
   bundle_windows_x86_64:
-    runs-on: windows-2022 # Используем стандартный сервер GitHub
+    runs-on: windows-2022 
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: '1'
       CARGO_INCREMENTAL: 0
+      # Указываем путь к рабочей директории
+      ZED_WORKSPACE: ${{ github.workspace }}
     steps:
     - name: checkout_repo
       uses: actions/checkout@v4
@@ -18,8 +20,15 @@ jobs:
     - name: setup_rust
       uses: dtolnay/rust-toolchain@stable
 
+    - name: Patch Script for GitHub Runner
+      # На GitHub Runners стоит Visual Studio Enterprise, а скрипт ищет Community.
+      # Эта команда автоматически меняет путь в скрипте сборки.
+      run: |
+        (Get-Content script/bundle-windows.ps1) -replace 'Community', 'Enterprise' | Set-Content script/bundle-windows.ps1
+      shell: pwsh
+
     - name: run_bundling
-      # Мы запускаем только сборку под Windows x86_64
+      # Запускаем сборку
       run: powershell script/bundle-windows.ps1 -Architecture x86_64
       shell: pwsh
 
@@ -27,6 +36,6 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: Zed-Windows-Bypassed
-        # Путь к файлу после сборки (в Windows Zed обычно тут)
+        # Путь к готовому файлу
         path: target/release/zed.exe 
         if-no-files-found: warn
