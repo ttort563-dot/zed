@@ -9,7 +9,6 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: '1'
       CARGO_INCREMENTAL: 0
-      # Указываем путь к рабочей директории
       ZED_WORKSPACE: ${{ github.workspace }}
     steps:
     - name: checkout_repo
@@ -20,15 +19,20 @@ jobs:
     - name: setup_rust
       uses: dtolnay/rust-toolchain@stable
 
-    - name: Patch Script for GitHub Runner
-      # На GitHub Runners стоит Visual Studio Enterprise, а скрипт ищет Community.
-      # Эта команда автоматически меняет путь в скрипте сборки.
+    - name: Patch Script (Disable Signing & Fix Paths)
+      # 1. Меняем Community на Enterprise (путь к VS)
+      # 2. Комментируем вызов CheckEnvironmentVariables (проверка ключей Azure)
+      # 3. Отключаем саму функцию подписи (Sign-File), чтобы скрипт не падал в конце
       run: |
-        (Get-Content script/bundle-windows.ps1) -replace 'Community', 'Enterprise' | Set-Content script/bundle-windows.ps1
+        $script = Get-Content script/bundle-windows.ps1
+        $script = $script -replace 'Community', 'Enterprise'
+        $script = $script -replace '(?<!#)CheckEnvironmentVariables', '# CheckEnvironmentVariables'
+        $script = $script -replace '(?<!#)Sign-File', '# Sign-File'
+        $script | Set-Content script/bundle-windows.ps1
       shell: pwsh
 
     - name: run_bundling
-      # Запускаем сборку
+      # Запускаем сборку без проверок
       run: powershell script/bundle-windows.ps1 -Architecture x86_64
       shell: pwsh
 
@@ -36,6 +40,6 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: Zed-Windows-Bypassed
-        # Путь к готовому файлу
+        # В Windows версии после бандлинга файл обычно лежит в корне target или в release
         path: target/release/zed.exe 
         if-no-files-found: warn
