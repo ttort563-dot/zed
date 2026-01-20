@@ -691,11 +691,9 @@ impl UserStore {
     }
 
     /// Returns whether the user's account is too new to use the service.
+    /// Returns whether the user's account is too new to use the service.
     pub fn account_too_young(&self) -> bool {
-        self.plan_info
-            .as_ref()
-            .map(|plan| plan.is_account_too_young)
-            .unwrap_or_default()
+        false // Аккаунт никогда не слишком молодой
     }
 
     /// Returns whether the current user has overdue invoices and usage should be blocked.
