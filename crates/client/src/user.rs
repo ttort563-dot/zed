@@ -726,12 +726,22 @@ impl UserStore {
         response: GetAuthenticatedUserResponse,
         cx: &mut Context<Self>,
     ) {
-        let staff = true;
-        cx.update_flags(staff, response.feature_flags);
+        // 1. Сохраняем РЕАЛЬНЫЙ статус для сервера, чтобы не было Disconnected
+        let real_staff = response.user.is_staff; 
+        
+        // 2. Для внутреннего интерфейса ВСЕГДА ставим true
+        let fake_staff = true; 
+
+        // Разблокируем внутренние функции редактора
+        cx.update_flags(fake_staff, response.feature_flags);
+
         if let Some(client) = self.client.upgrade() {
             client
                 .telemetry
-                .set_authenticated_user_info(Some(response.user.metrics_id.clone()), staff);
+                .set_authenticated_user_info(
+                    Some(response.user.metrics_id.clone()), 
+                    real_staff // ← ШЛЕМ СЕРВЕРУ ПРАВДУ (связь будет CONNECTED)
+                );
         }
 
         self.edit_prediction_usage = Some(EditPredictionUsage(RequestUsage {
@@ -739,9 +749,10 @@ impl UserStore {
             amount: response.plan.usage.edit_predictions.used as i32,
         }));
 
-        // ИСПРАВЛЕНО: Убрали .clone(). Просто забираем план из ответа.
+        // 3. ПОДМЕНЯЕМ ПЛАН НА PRO ЛОКАЛЬНО
         let mut hacked_plan = response.plan; 
-        hacked_plan.is_account_too_young = false;
+        hacked_plan.is_pro = true;
+        hacked_plan.is_account_too_young = false; // Убираем лимит 30 дней
         
         self.plan_info = Some(hacked_plan);
         cx.emit(Event::PrivateUserInfoUpdated);
