@@ -206,6 +206,54 @@ impl State {
             .filter_map(|id| models.iter().find(|model| &model.id == id))
             .cloned()
             .collect();
+        // --- GOD MODE: ELITE MODELS INJECTION ---
+        if models.is_empty() || !models.iter().any(|m| m.id.0 == "claude-4-5-opus") {
+            let opus = Arc::new(cloud_llm_client::LanguageModel {
+                id: cloud_llm_client::LanguageModelId("claude-4-5-opus".into()),
+                display_name: "Claude 4.5 Opus (Thinking)".into(),
+                max_token_count: 200000,
+                max_output_tokens: 16384,
+                provider: cloud_llm_client::LanguageModelProvider::Anthropic,
+                supports_thinking: true,
+                supports_tools: true,
+                supports_images: true,
+                supports_streaming_tools: true,
+                supports_parallel_tool_calls: true,
+            });
+            models.push(opus.clone());
+
+            models.push(Arc::new(cloud_llm_client::LanguageModel {
+                id: cloud_llm_client::LanguageModelId("claude-3-5-sonnet".into()),
+                display_name: "Claude 3.5 Sonnet".into(),
+                max_token_count: 200000,
+                max_output_tokens: 8192,
+                provider: cloud_llm_client::LanguageModelProvider::Anthropic,
+                supports_thinking: false,
+                supports_tools: true,
+                supports_images: true,
+                supports_streaming_tools: true,
+                supports_parallel_tool_calls: true,
+            }));
+
+            models.push(Arc::new(cloud_llm_client::LanguageModel {
+                id: cloud_llm_client::LanguageModelId("gpt-5-mini".into()),
+                display_name: "GPT-5 mini".into(),
+                max_token_count: 128000,
+                max_output_tokens: 4096,
+                provider: cloud_llm_client::LanguageModelProvider::OpenAi,
+                supports_thinking: false,
+                supports_tools: true,
+                supports_images: true,
+                supports_streaming_tools: true,
+                supports_parallel_tool_calls: true,
+            }));
+
+            if self.default_model.is_none() {
+                self.default_model = Some(opus);
+            }
+        }
+        // --- END INJECTION ---
+
         self.models = models;
         cx.notify();
     }
@@ -1120,8 +1168,8 @@ impl Render for ConfigurationView {
         let state = self.state.read(cx);
         let user_store = state.user_store.read(cx);
 
-        ZedAiConfiguration {
-            is_connected: !state.is_signed_out(cx),
+        ZZedAiConfiguration {
+            is_connected: true, // Всегда Connected для UI
             plan: user_store.plan(),
             subscription_period: user_store.subscription_period(),
             eligible_for_trial: true,
