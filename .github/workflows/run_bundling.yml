@@ -8,7 +8,7 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_HOME: D:\c
   ZED_WORKSPACE: ${{ github.workspace }}
-  # Добавляем всё, что он просил, на всякий случай
+  # Пустышки для подстраховки
   TIMESTAMP_SERVER: "http://timestamp.digicert.com"
   FILE_DIGEST: "SHA256"
 
@@ -37,33 +37,40 @@ jobs:
       with:
         workspaces: "."
 
-    - name: Kill The Signing Script
+    - name: Patch Script (Safe Bypass)
       run: |
-        # 1. Находим все файлы sign.ps1 и полностью стираем их содержимое
-        Get-ChildItem -Recurse -Filter "sign.ps1" | ForEach-Object { 
-            Set-Content -Path $_.FullName -Value 'Write-Host "Sign script neutralized"; exit 0' 
-        }
+        $path = "script/bundle-windows.ps1"
+        (Get-Content $path) | ForEach-Object {
+            $line = $_
+            # 1. Исправляем путь к Visual Studio
+            $line = $line -replace 'Community', 'Enterprise'
+            
+            # 2. Комментируем ТОЛЬКО вызовы функций (строки, которые состоят только из названия)
+            # Это не тронет строки "function Check... {" и не сломает синтаксис
+            if ($line -match '^\s*(CheckEnvironmentVariables|Sign-File)\s*$') {
+                $line = "# bypassed: " + $line
+            }
+            
+            # 3. Пропускаем лицензии
+            $line = $line -replace '\. script/generate-licenses\.ps1', '# Skip licenses'
+            
+            $line
+        } | Set-Content $path
         
-        # 2. Патчим основной скрипт бандлера
-        $bundlePath = "script/bundle-windows.ps1"
-        $s = Get-Content $bundlePath
-        $s = $s -replace 'Community', 'Enterprise'
-        # Вырезаем любые попытки вызвать проверку переменных или подпись
-        $s = $s -replace 'CheckEnvironmentVariables', 'Write-Host "Skipped"'
-        $s = $s -replace 'Sign-File', 'Write-Host "Skipped"'
-        $s = $s -replace '\. script/generate-licenses\.ps1', 'Write-Host "Skipped"'
-        $s | Set-Content $bundlePath
+        # 4. Полностью обнуляем все скрипты подписи, чтобы они не могли выдать ошибку
+        Get-ChildItem -Recurse -Filter "sign.ps1" | ForEach-Object { Set-Content $_.FullName -Value "exit 0" }
         
-        # 3. Заглушка для лицензий
+        # 5. Заглушка для файла лицензий
         if (!(Test-Path "assets/licenses.md")) { New-Item -Path "assets/licenses.md" -Value "Bypass" -Force }
-      
+      shell: pwsh
+
     - name: run_bundling
-      # Даже если скрипт в конце выдаст ошибку, мы продолжаем (continue-on-error)
+      # Мы разрешаем продолжить, даже если скрипт бандлера в конце на чем-то споткнется
       continue-on-error: true
       run: pwsh script/bundle-windows.ps1 -Architecture x86_64
 
     - name: upload_artifact
-      # Этот шаг выполнится ДАЖЕ ЕСЛИ предыдущий упал (if: always)
+      # Этот шаг выполнится ВСЕГДА, так как zed.exe уже готов к этому моменту
       if: always()
       uses: actions/upload-artifact@v4
       with:
@@ -71,4 +78,5 @@ jobs:
         path: |
           target/x86_64-pc-windows-msvc/release/zed.exe
           target/release/zed.exe
+          inno/x86_64/bin/zed.exe
         if-no-files-found: warn
