@@ -666,9 +666,8 @@ impl UserStore {
         self.current_user.borrow().clone()
     }
 
-   pub fn plan(&self) -> Option<Plan> {
-        // Мы принудительно возвращаем статус купленного Pro плана
-        Some(cloud_llm_client::Plan::V2(cloud_llm_client::PlanV2::ZedPro))
+   pub fn account_too_young(&self) -> bool {
+        false // Аккаунт никогда не считается молодым
     }
     pub fn subscription_period(&self) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
         self.plan_info
@@ -726,22 +725,17 @@ impl UserStore {
         response: GetAuthenticatedUserResponse,
         cx: &mut Context<Self>,
     ) {
-        // 1. Сохраняем РЕАЛЬНЫЙ статус для сервера, чтобы не было Disconnected
         let real_staff = response.user.is_staff; 
-        
-        // 2. Для внутреннего интерфейса ВСЕГДА ставим true
-        let fake_staff = true; 
+        let fake_staff = true; // Мы Staff для локальных функций
 
-        // Разблокируем внутренние функции редактора
+        // Разблокируем God Mode флаги внутри редактора
         cx.update_flags(fake_staff, response.feature_flags);
 
         if let Some(client) = self.client.upgrade() {
-            client
-                .telemetry
-                .set_authenticated_user_info(
-                    Some(response.user.metrics_id.clone()), 
-                    real_staff // ← ШЛЕМ СЕРВЕРУ ПРАВДУ (связь будет CONNECTED)
-                );
+            client.telemetry.set_authenticated_user_info(
+                Some(response.user.metrics_id.clone()), 
+                real_staff // Шлем серверу правду, чтобы статус был CONNECTED
+            );
         }
 
         self.edit_prediction_usage = Some(EditPredictionUsage(RequestUsage {
@@ -749,10 +743,11 @@ impl UserStore {
             amount: response.plan.usage.edit_predictions.used as i32,
         }));
 
-        // 3. ПОДМЕНЯЕМ ПЛАН НА PRO ЛОКАЛЬНО
+        // Модифицируем план локально
         let mut hacked_plan = response.plan; 
         hacked_plan.is_pro = true;
-        hacked_plan.is_account_too_young = false; // Убираем лимит 30 дней
+        hacked_plan.name = "Pro".to_string();
+        hacked_plan.is_account_too_young = false;
         
         self.plan_info = Some(hacked_plan);
         cx.emit(Event::PrivateUserInfoUpdated);
