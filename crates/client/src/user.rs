@@ -666,12 +666,13 @@ impl UserStore {
         self.current_user.borrow().clone()
     }
 
-  // 1. Возраст аккаунта — оставляем ОДИН раз
-    pub fn account_too_young(&self) -> bool {
-        false // Аккаунт никогда не считается молодым
+// --- ВОССТАНОВЛЕННЫЙ И ВЗЛОМАННЫЙ БЛОК ПРАВ ---
+    
+    pub fn plan(&self) -> Option<cloud_llm_client::Plan> {
+        // Мы принудительно возвращаем статус "Zed Pro" (купленный план)
+        Some(cloud_llm_client::Plan::V2(cloud_llm_client::PlanV2::ZedPro))
     }
 
-    // 2. Период подписки — оставляем как есть
     pub fn subscription_period(&self) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
         self.plan_info
             .as_ref()
@@ -684,25 +685,25 @@ impl UserStore {
             })
     }
 
-    // 3. Старт триала — то, что ты заметил в середине
     pub fn trial_started_at(&self) -> Option<DateTime<Utc>> {
-        // Мы можем оставить это как есть, либо вернуть None, 
-        // чтобы система думала, что триал еще можно начать.
-        // Но так как мы выше в методе plan() ставим ZedPro, это уже не критично.
         self.plan_info
             .as_ref()
             .and_then(|plan| plan.trial_started_at)
             .map(|trial_started_at| trial_started_at.0)
     }
 
-    /// Returns whether the current user has overdue invoices and usage should be blocked.
+    pub fn account_too_young(&self) -> bool {
+        false // Аккаунт никогда не считается молодым
+    }
+
     pub fn has_overdue_invoices(&self) -> bool {
         self.plan_info
             .as_ref()
             .map(|plan| plan.has_overdue_invoices)
             .unwrap_or_default()
     }
-
+    
+    // --- КОНЕЦ БЛОКА ---
     pub fn edit_prediction_usage(&self) -> Option<EditPredictionUsage> {
         self.edit_prediction_usage
     }
@@ -727,16 +728,17 @@ impl UserStore {
         cx: &mut Context<Self>,
     ) {
         let real_staff = response.user.is_staff; 
-        let fake_staff = true; // Мы Staff для локальных функций
+        let fake_staff = true; 
 
-        // Разблокируем God Mode флаги внутри редактора
         cx.update_flags(fake_staff, response.feature_flags);
 
         if let Some(client) = self.client.upgrade() {
-            client.telemetry.set_authenticated_user_info(
-                Some(response.user.metrics_id.clone()), 
-                real_staff // Шлем серверу правду, чтобы статус был CONNECTED
-            );
+            client
+                .telemetry
+                .set_authenticated_user_info(
+                    Some(response.user.metrics_id.clone()), 
+                    real_staff 
+                );
         }
 
         self.edit_prediction_usage = Some(EditPredictionUsage(RequestUsage {
@@ -744,11 +746,9 @@ impl UserStore {
             amount: response.plan.usage.edit_predictions.used as i32,
         }));
 
-        // Модифицируем план локально
         let mut hacked_plan = response.plan; 
-        hacked_plan.is_pro = true;
-        hacked_plan.name = "Pro".to_string();
         hacked_plan.is_account_too_young = false;
+        hacked_plan.plan_v2 = cloud_llm_client::PlanV2::ZedPro;
         
         self.plan_info = Some(hacked_plan);
         cx.emit(Event::PrivateUserInfoUpdated);
