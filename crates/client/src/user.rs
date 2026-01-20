@@ -666,11 +666,10 @@ impl UserStore {
         self.current_user.borrow().clone()
     }
 
-    pub fn plan(&self) -> Option<Plan> {
+   pub fn plan(&self) -> Option<Plan> {
         // Мы принудительно возвращаем статус купленного Pro плана
         Some(cloud_llm_client::Plan::V2(cloud_llm_client::PlanV2::ZedPro))
     }
-
     pub fn subscription_period(&self) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
         self.plan_info
             .as_ref()
@@ -693,7 +692,7 @@ impl UserStore {
     /// Returns whether the user's account is too new to use the service.
     /// Returns whether the user's account is too new to use the service.
     pub fn account_too_young(&self) -> bool {
-        false // Аккаунт никогда не слишком молодой
+        false // Аккаунт никогда не считается молодым
     }
 
     /// Returns whether the current user has overdue invoices and usage should be blocked.
@@ -740,14 +739,9 @@ impl UserStore {
             amount: response.plan.usage.edit_predictions.used as i32,
         }));
 
-        // ХАК: Модифицируем данные плана, которые пришли от сервера
-        let mut hacked_plan = response.plan.clone();
+        // ИСПРАВЛЕНО: Убрали .clone(). Просто забираем план из ответа.
+        let mut hacked_plan = response.plan; 
         hacked_plan.is_account_too_young = false;
-        // ГОВОРИМ СИСТЕМЕ, ЧТО ПЛАН КУПЛЕН
-        hacked_plan.is_pro = true; 
-        hacked_plan.name = "Pro".to_string();
-        // Убираем дату начала триала, так как у нас "настоящий" Pro
-        hacked_plan.trial_started_at = None; 
         
         self.plan_info = Some(hacked_plan);
         cx.emit(Event::PrivateUserInfoUpdated);
